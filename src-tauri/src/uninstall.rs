@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader};
 use std::thread;
 use std::time::Duration;
 use tauri::Emitter;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppInfo {

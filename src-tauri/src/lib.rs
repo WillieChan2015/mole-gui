@@ -17,10 +17,7 @@ fn set_green_button_to_zoom(window: &tauri::WebviewWindow) {
     use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
 
     unsafe {
-        let ns_window = window
-            .ns_window()
-            .expect("Failed to get NSWindow handle")
-            as *mut NSWindow;
+        let ns_window = window.ns_window().expect("Failed to get NSWindow handle") as *mut NSWindow;
         let ns_window_ref = &*ns_window;
 
         let mut behavior = ns_window_ref.collectionBehavior();
@@ -29,39 +26,140 @@ fn set_green_button_to_zoom(window: &tauri::WebviewWindow) {
         behavior.insert(NSWindowCollectionBehavior::FullScreenNone);
         ns_window_ref.setCollectionBehavior(behavior);
 
-        eprintln!("=== Green button === behavior set to: {:?}", ns_window_ref.collectionBehavior());
+        eprintln!(
+            "=== Green button === behavior set to: {:?}",
+            ns_window_ref.collectionBehavior()
+        );
     }
 }
 
 fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
-    let (file_label, close_label, quit_label, edit_label, undo_label, redo_label, cut_label, copy_label, paste_label, select_all_label, view_label, fullscreen_label, window_label, minimize_label, zoom_label) = if lang == "zh" {
-        ("文件", "关闭窗口", "退出", "编辑", "撤销", "重做", "剪切", "复制", "粘贴", "全选", "视图", "全屏", "窗口", "最小化", "缩放")
+    let (
+        file_label,
+        close_label,
+        quit_label,
+        edit_label,
+        undo_label,
+        redo_label,
+        cut_label,
+        copy_label,
+        paste_label,
+        select_all_label,
+        view_label,
+        fullscreen_label,
+        window_label,
+        minimize_label,
+        zoom_label,
+    ) = if lang == "zh" {
+        (
+            "文件",
+            "关闭窗口",
+            "退出",
+            "编辑",
+            "撤销",
+            "重做",
+            "剪切",
+            "复制",
+            "粘贴",
+            "全选",
+            "视图",
+            "全屏",
+            "窗口",
+            "最小化",
+            "缩放",
+        )
     } else {
-        ("File", "Close Window", "Quit", "Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "View", "Full Screen", "Window", "Minimize", "Zoom")
+        (
+            "File",
+            "Close Window",
+            "Quit",
+            "Edit",
+            "Undo",
+            "Redo",
+            "Cut",
+            "Copy",
+            "Paste",
+            "Select All",
+            "View",
+            "Full Screen",
+            "Window",
+            "Minimize",
+            "Zoom",
+        )
     };
 
     let file_menu = SubmenuBuilder::new(app, file_label)
-        .item(&MenuItemBuilder::new(close_label).id("close").accelerator("Cmd+W").build(app)?)
+        .item(
+            &MenuItemBuilder::new(close_label)
+                .id("close")
+                .accelerator("Cmd+W")
+                .build(app)?,
+        )
         .separator()
-        .item(&MenuItemBuilder::new(quit_label).id("quit").accelerator("Cmd+Q").build(app)?)
+        .item(
+            &MenuItemBuilder::new(quit_label)
+                .id("quit")
+                .accelerator("Cmd+Q")
+                .build(app)?,
+        )
         .build()?;
 
     let edit_menu = SubmenuBuilder::new(app, edit_label)
-        .item(&MenuItemBuilder::new(undo_label).id("undo").accelerator("Cmd+Z").build(app)?)
-        .item(&MenuItemBuilder::new(redo_label).id("redo").accelerator("Cmd+Shift+Z").build(app)?)
+        .item(
+            &MenuItemBuilder::new(undo_label)
+                .id("undo")
+                .accelerator("Cmd+Z")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::new(redo_label)
+                .id("redo")
+                .accelerator("Cmd+Shift+Z")
+                .build(app)?,
+        )
         .separator()
-        .item(&MenuItemBuilder::new(cut_label).id("cut").accelerator("Cmd+X").build(app)?)
-        .item(&MenuItemBuilder::new(copy_label).id("copy").accelerator("Cmd+C").build(app)?)
-        .item(&MenuItemBuilder::new(paste_label).id("paste").accelerator("Cmd+V").build(app)?)
-        .item(&MenuItemBuilder::new(select_all_label).id("select_all").accelerator("Cmd+A").build(app)?)
+        .item(
+            &MenuItemBuilder::new(cut_label)
+                .id("cut")
+                .accelerator("Cmd+X")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::new(copy_label)
+                .id("copy")
+                .accelerator("Cmd+C")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::new(paste_label)
+                .id("paste")
+                .accelerator("Cmd+V")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::new(select_all_label)
+                .id("select_all")
+                .accelerator("Cmd+A")
+                .build(app)?,
+        )
         .build()?;
 
     let view_menu = SubmenuBuilder::new(app, view_label)
-        .item(&MenuItemBuilder::new(fullscreen_label).id("fullscreen").accelerator("Ctrl+Cmd+F").build(app)?)
+        .item(
+            &MenuItemBuilder::new(fullscreen_label)
+                .id("fullscreen")
+                .accelerator("Ctrl+Cmd+F")
+                .build(app)?,
+        )
         .build()?;
 
     let window_menu = SubmenuBuilder::new(app, window_label)
-        .item(&MenuItemBuilder::new(minimize_label).id("minimize").accelerator("Cmd+M").build(app)?)
+        .item(
+            &MenuItemBuilder::new(minimize_label)
+                .id("minimize")
+                .accelerator("Cmd+M")
+                .build(app)?,
+        )
         .item(&MenuItemBuilder::new(zoom_label).id("zoom").build(app)?)
         .build()?;
 

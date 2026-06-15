@@ -11,7 +11,7 @@ pub fn analyze_path(app_handle: tauri::AppHandle, path: String) -> Result<String
     let _ = app_handle.emit("analyze:started", ());
 
     let mut cmd = super::mole::mole_command(&mole_path, "analyze");
-    cmd.args(&["--json", &path]);
+    cmd.args(["--json", &path]);
     let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {}", e))?;
 
     let timeout = Duration::from_secs(300);

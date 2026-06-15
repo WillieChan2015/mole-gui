@@ -53,7 +53,7 @@ pub fn scan_installers() -> Result<Vec<InstallerFile>, String> {
     let mut results = Vec::new();
     results.extend(scan_dir(&PathBuf::from(&home).join("Downloads")));
     results.extend(scan_dir(&PathBuf::from(&home).join("Documents")));
-    results.sort_by(|a, b| b.size.cmp(&a.size));
+    results.sort_by_key(|b| std::cmp::Reverse(b.size));
     Ok(results)
 }
 

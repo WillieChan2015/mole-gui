@@ -110,6 +110,7 @@ pub fn run_mole_with_timeout(
 ///
 /// Like [`run_mole_with_timeout`], but sets `MOLE_DRY_RUN=1`.
 /// Returns `(exit_code, stdout, stderr)` on success.
+#[allow(dead_code)]
 pub fn run_mole_dry_run_with_timeout(
     mole_path: &Path,
     subcommand: &str,

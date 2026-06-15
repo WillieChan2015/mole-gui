@@ -162,7 +162,7 @@ pub fn clean_execute_selected(
         .notification()
         .builder()
         .title("Cleanup complete")
-        .body(&format!("Deleted {} items.", deleted))
+        .body(format!("Deleted {} items.", deleted))
         .show();
     if errors.is_empty() {
         Ok(CleanResult {
