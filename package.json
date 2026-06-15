@@ -1,7 +1,7 @@
 {
   "name": "mole-gui",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Native macOS GUI for Mole system maintenance tool",
   "license": "MIT",
   "repository": "https://github.com/WillieChan2015/mole-gui.git",

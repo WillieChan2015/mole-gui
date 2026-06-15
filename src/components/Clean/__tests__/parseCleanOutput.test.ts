@@ -50,6 +50,19 @@ describe("parseCleanOutput", () => {
     });
   });
 
+  it("parses dry-run items", () => {
+    const input = `➤ Developer tools
+→ Xcode XCTestDevices test data, 1.5MB dry
+`;
+    const result = parseCleanOutput(input);
+    expect(result.sections[0].items[0]).toEqual({
+      name: "Xcode XCTestDevices test data",
+      size: "1.5MB",
+      skipped: false,
+      checked: true,
+    });
+  });
+
   it("parses warnings", () => {
     const input = `➤ System
 ◎ Requires admin privileges

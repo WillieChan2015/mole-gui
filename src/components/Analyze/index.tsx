@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/invoke";
 import { safeListen } from "../../lib/safeListen";
@@ -38,6 +38,7 @@ export default function Analyze() {
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
   const [chartType, setChartType] = useState<'treemap' | 'sunburst' | 'bar'>('treemap');
   const [progressLines, setProgressLines] = useState<string[]>([]);
+  const [filterQuery, setFilterQuery] = useState("");
   const unlistenRefs = useRef<(() => void)[]>([]);
   const theme = useChartTheme();
 
@@ -83,13 +84,27 @@ export default function Analyze() {
     });
   }, [path]);
 
-  const sortedEntries = result
-    ? [...result.entries].sort((a, b) => b.size - a.size)
-    : [];
+  const sortedEntries = useMemo(() => {
+    if (!result) return [];
+    const sorted = [...result.entries].sort((a, b) => b.size - a.size);
+    if (!filterQuery) return sorted;
+    const query = filterQuery.toLowerCase();
+    return sorted.filter((entry) =>
+      entry.name.toLowerCase().includes(query) ||
+      entry.path.toLowerCase().includes(query)
+    );
+  }, [result, filterQuery]);
 
-  const sortedLargeFiles = result
-    ? [...result.large_files].sort((a, b) => b.size - a.size)
-    : [];
+  const sortedLargeFiles = useMemo(() => {
+    if (!result) return [];
+    const sorted = [...result.large_files].sort((a, b) => b.size - a.size);
+    if (!filterQuery) return sorted;
+    const query = filterQuery.toLowerCase();
+    return sorted.filter((file) =>
+      file.name.toLowerCase().includes(query) ||
+      file.path.toLowerCase().includes(query)
+    );
+  }, [result, filterQuery]);
 
   // 准备目录大小数据（TOP 20）
   const topEntries = sortedEntries.slice(0, 20).map((entry) => ({
@@ -206,6 +221,25 @@ export default function Analyze() {
             <span className="truncate max-w-[320px]">{t("common:path")}: <strong>{result.path}</strong></span>
             <span>{t("totalSize")}: <strong>{formatBytes(result.total_size)}</strong></span>
             <span>{t("files")}: <strong>{result.total_files.toLocaleString()}</strong></span>
+          </div>
+
+          {/* Filter input */}
+          <div className="mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-text-secondary">{t("filter")}:</span>
+              <input
+                type="text"
+                placeholder={t("filterPlaceholder")}
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                className="flex-1 max-w-md rounded-lg text-sm focus:ring-2 focus:ring-accent/30"
+              />
+              {filterQuery && (
+                <span className="text-xs text-text-secondary">
+                  {sortedEntries.length + sortedLargeFiles.length} {t("common:matches", { defaultValue: "matches" })}
+                </span>
+              )}
+            </div>
           </div>
 
           {viewMode === 'chart' ? (

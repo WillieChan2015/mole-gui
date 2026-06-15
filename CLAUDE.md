@@ -55,12 +55,57 @@ Tauri 命令使用 `#[tauri::command]` 宏，错误返回 `Result<T, String>`。
 
 不同命令的调用和解析方式不同：
 
-| 命令 | 调用方式 | 解析方式 |
-|------|----------|----------|
-| analyze, history, uninstall | `--json` 参数 | JSON 反序列化 |
-| clean, optimize | `MOLE_DRY_RUN=1` + `NO_COLOR=1` | 文本解析（section 分组） |
-| purge | `MOLE_DRY_RUN=1` + `NO_COLOR=1` | 汇总文本 + export 文件 |
-| installer | Rust 直接扫描 | 结构化数据 |
+| 命令 | 调用方式 | 解析方式 | 超时 | Tauri 命令 |
+|------|----------|----------|------|------------|
+| analyze | `mole analyze --json <path>` | JSON 反序列化 | 120s | `analyze_path` |
+| history | `mole history --json` | JSON 反序列化 | 60s | `history_list` |
+| uninstall | `mole uninstall --list` / `mole uninstall <app>` | JSON 反序列化 | 300s | `uninstall_list` / `uninstall_app` |
+| clean (scan) | `MOLE_DRY_RUN=1 mole clean` | 文本解析（section 分组）+ 实时进度事件 | 300s | `clean_scan` |
+| clean (execute) | `mole clean` | 纯文本 | 300s | `clean_execute` |
+| clean (list) | 读取 `~/.config/mole/clean-list.txt` | `=== Section ===` 格式解析 | N/A | `clean_list_scan` |
+| clean (selected) | Rust `trash::delete` 直接删除 | N/A | N/A | `clean_execute_selected` |
+| optimize (scan) | `MOLE_DRY_RUN=1 mole optimize` | 文本解析 + 实时进度事件 | 300s | `optimize_scan` |
+| optimize (execute) | `mole optimize` | 纯文本 + 实时进度事件 | 300s | `optimize_execute` |
+| purge (scan) | `MOLE_DRY_RUN=1 mole purge` | 汇总文本 + 实时进度事件 | 300s | `purge_scan` |
+| purge (execute) | `mole purge` | 纯文本 + 实时进度事件 | 300s | `purge_execute` |
+| installer | Rust 直接扫描 `~/Downloads` + `~/Documents` | 结构化数据 | N/A | `scan_installers` / `delete_installer` |
+
+#### 输出格式说明
+
+- **analyze**: JSON 数组，每个元素含目录路径、大小、子项等字段
+- **history**: JSON 数组，每条记录含时间戳、操作类型、详情
+- **uninstall --list**: JSON 数组，每个元素含应用名、路径、大小
+- **clean/optimize/purge dry-run 文本**: 以 `=== Section ===` 分隔的文本块，每行一个路径/操作项，含大小提示（`# 5.8MB, 4 items`）
+- **实时进度事件**: 通过 Tauri `emit` 发送，事件名格式 `<module>:progress`，逐行推送 stdout 输出
+
+#### 进度事件列表
+
+| 事件名 | 触发时机 |
+|--------|----------|
+| `clean:scan_started` | clean 扫描开始 |
+| `clean:progress` | clean 逐行输出 |
+| `clean:scan_completed` | clean 扫描完成 |
+| `optimize:scan_started` | optimize 扫描开始 |
+| `optimize:progress` | optimize 逐行输出 |
+| `optimize:scan_completed` | optimize 扫描完成 |
+| `optimize:execute_started` | optimize 执行开始 |
+| `optimize:execute_completed` | optimize 执行完成 |
+| `purge:scan_started` | purge 扫描开始 |
+| `purge:progress` | purge 逐行输出 |
+| `purge:scan_completed` | purge 扫描完成 |
+| `purge:execute_started` | purge 执行开始 |
+| `purge:execute_completed` | purge 执行完成 |
+| `analyze:started` | analyze 分析开始 |
+| `analyze:progress` | analyze 逐行输出 |
+| `analyze:completed` | analyze 分析完成 |
+
+#### 环境变量
+
+| 变量 | 用途 |
+|------|------|
+| `NO_COLOR=1` | 禁用 Mole ANSI 颜色码（所有命令自动设置） |
+| `MOLE_DRY_RUN=1` | dry-run 模式，仅预览不执行（scan 类命令使用） |
+| `MOLE_PATH` | 开发时覆盖 mole 脚本路径 |
 
 ### 关键依赖
 

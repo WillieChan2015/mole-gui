@@ -14,5 +14,7 @@
   "file": "File",
   "dirSpaceDistribution": "Directory Space Distribution",
   "topLargeFiles": "Large Files TOP 10",
-  "dirFileDistribution": "Dir/File Distribution"
+  "dirFileDistribution": "Dir/File Distribution",
+  "filter": "Filter",
+  "filterPlaceholder": "Type to filter entries..."
 }

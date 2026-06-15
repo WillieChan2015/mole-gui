@@ -110,6 +110,18 @@ export function parseCleanOutput(raw: string): ScanData {
       continue;
     }
 
+    // Dry-run item: → item name, size dry
+    const dryRunMatch = trimmed.match(/^→\s+(.+?),\s+(\d+(?:\.\d+)?[KMGT]?B)\s+dry$/);
+    if (dryRunMatch && currentSection) {
+      currentSection.items.push({
+        name: dryRunMatch[1].trim(),
+        size: dryRunMatch[2],
+        skipped: false,
+        checked: true,
+      });
+      continue;
+    }
+
     // Warning/skipped: ◎ description
     const warnMatch = trimmed.match(/^◎\s+(.+)$/);
     if (warnMatch && currentSection) {

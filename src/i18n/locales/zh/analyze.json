@@ -14,5 +14,7 @@
   "file": "文件",
   "dirSpaceDistribution": "目录空间分布",
   "topLargeFiles": "大文件 TOP 10",
-  "dirFileDistribution": "目录/文件分布"
+  "dirFileDistribution": "目录/文件分布",
+  "filter": "过滤",
+  "filterPlaceholder": "输入关键词过滤条目..."
 }
