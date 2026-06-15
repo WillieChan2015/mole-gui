@@ -10,6 +10,7 @@ mole-gui/
 ├── docs/                        # 文档目录
 │   ├── DOCS_INDEX.md            # 文档索引（本文件）
 │   ├── CHANGELOG.md             # 版本历史和重要变更
+│   ├── LICENSE-COMPATIBILITY.md # 许可证兼容性说明
 │   └── superpowers/             # 开发过程文档
 │       ├── architecture/        # 架构设计文档
 │       │   └── implementation_plan.md
@@ -228,4 +229,17 @@ mole-gui/
 
 ---
 
-**最后更新**：2024-06-11
+### 7. LICENSE-COMPATIBILITY.md
+**位置**：`./LICENSE-COMPATIBILITY.md`（docs/目录）
+**用途**：Mole CLI（GPL-3.0）与 Mole GUI（MIT）的许可证兼容性分析
+**内容**：
+- 许可证概览
+- 兼容性分析（进程隔离、非派生作品）
+- 分发注意事项
+- 建议
+
+**更新频率**：许可证变更时更新
+
+---
+
+**最后更新**：2026-06-15
