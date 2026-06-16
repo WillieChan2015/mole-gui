@@ -10,10 +10,14 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: pnpm/action-setup@v2
+        with:
+          version: 9
 
       - uses: actions/setup-node@v4
         with:
