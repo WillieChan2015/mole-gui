@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "../../lib/invoke";
-import { safeListen } from "../../lib/safeListen";
+import { useMoleStream } from "../../lib/useMoleStream";
 import { ProgressRing } from "../charts";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import ProgressCard from "../common/ProgressCard";
 
 interface PurgeSummary {
   wouldFree: string;
@@ -52,83 +52,37 @@ export default function Purge() {
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
-  const [progressLines, setProgressLines] = useState<string[]>([]);
-  const unlistenRefs = useRef<(() => void)[]>([]);
+  const { progressLines, isStreaming, start } = useMoleStream("purge");
   const theme = useChartTheme();
-
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-    };
-  }, []);
 
   const handleScan = useCallback(async () => {
     setScanning(true);
     setError(null);
     setResultMsg(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("purge:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up scan completed listener
-    const unlistenCompleted = await safeListen<void>("purge:scan_completed", () => {
-      setScanning(false);
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<{ rawOutput: string }>("purge_scan").then((res) => {
-      setScanData(parsePurgeOutput(res.rawOutput));
-    }).catch((err) => {
+    try {
+      const rawOutput = await start("purge:scan_completed", "purge_scan");
+      setScanData(parsePurgeOutput(rawOutput));
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setScanning(false);
-    });
-  }, []);
+    }
+  }, [start]);
 
   const handleExecute = useCallback(async () => {
     setExecuting(true);
     setError(null);
     setResultMsg(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("purge:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up execute completed listener
-    const unlistenCompleted = await safeListen<void>("purge:execute_completed", () => {
-      setExecuting(false);
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<{ rawOutput: string }>("purge_execute").then((res) => {
+    try {
+      const rawOutput = await start("purge:execute_completed", "purge_execute");
       setResultMsg(t("purgeCompleted"));
-      setScanData(parsePurgeOutput(res.rawOutput));
-    }).catch((err) => {
+      setScanData(parsePurgeOutput(rawOutput));
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setExecuting(false);
-    });
-  }, []);
+    }
+  }, [start, t]);
 
   return (
     <div className="page-container">
@@ -153,20 +107,7 @@ export default function Purge() {
       {error && <p className="text-[var(--danger-color)]">{error}</p>}
       {resultMsg && <p className="text-[var(--success-color)]">{resultMsg}</p>}
 
-      {/* Progress area with card style */}
-      {(scanning || executing) && (
-        <div className="card mb-6 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary text-sm font-medium">
-            <span className="inline-block w-[14px] h-[14px] border-2 border-[#ccc] border-t-accent rounded-full animate-spin" />
-            <span>{progressLines.length > 0 ? t("scanningLines", { count: progressLines.length }) : t("common:scanning")}</span>
-          </div>
-          {progressLines.length > 0 && (
-            <pre className="m-0 p-3 max-h-[300px] overflow-y-auto font-mono text-xs leading-relaxed bg-bg-tertiary text-text-primary whitespace-pre-wrap break-all rounded-xl mt-2">
-              {progressLines.slice(-20).join("\n")}
-            </pre>
-          )}
-        </div>
-      )}
+      {isStreaming && <ProgressCard lines={progressLines} label={t("common:scanning")} />}
 
       {scanData?.isDryRun && (
         <div className="info-banner bg-[var(--info-bg)] rounded-xl mb-4 text-[0.9rem] text-[var(--accent-color)]">

@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "../../lib/invoke";
-import { safeListen } from "../../lib/safeListen";
+import { useMoleStream } from "../../lib/useMoleStream";
 import { AppBarChart, AppPieChart } from "../charts";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import ProgressCard from "../common/ProgressCard";
 
 interface AppInfo {
   name: string;
@@ -22,48 +22,21 @@ export default function Uninstall() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AppInfo | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
-  const [progressLines, setProgressLines] = useState<string[]>([]);
-  const unlistenRefs = useRef<(() => void)[]>([]);
+  const { progressLines, isStreaming, start } = useMoleStream("uninstall");
   const theme = useChartTheme();
-
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-    };
-  }, []);
 
   const fetchApps = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("uninstall:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up scan completed listener
-    const unlistenCompleted = await safeListen<void>("uninstall:scan_completed", () => {
-      setLoading(false);
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<AppInfo[]>("uninstall_list").then((result) => {
+    try {
+      const result = await start<AppInfo[]>("uninstall:scan_completed", "uninstall_list");
       setApps(result);
-    }).catch((err) => {
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-    });
-  }, []);
+    }
+  }, [start]);
 
   useEffect(() => {
     fetchApps();
@@ -93,34 +66,16 @@ export default function Uninstall() {
 
     setUninstalling(true);
     setError(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("uninstall:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up uninstall completed listener
-    const unlistenCompleted = await safeListen<void>("uninstall:uninstall_completed", () => {
-      setUninstalling(false);
+    try {
+      await start("uninstall:uninstall_completed", "uninstall_app", { name: selected.uninstall_name });
       setSelected(null);
-      fetchApps();
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<string>("uninstall_app", { name: selected.uninstall_name }).catch((err) => {
+      await fetchApps();
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setUninstalling(false);
-    });
-  }, [selected, fetchApps]);
+    }
+  }, [selected, start, fetchApps, t]);
 
   // 准备应用大小 TOP 排行数据
   const topApps = useMemo(() => {
@@ -173,20 +128,7 @@ export default function Uninstall() {
 
       {error && <p className="text-danger">{error}</p>}
 
-      {/* Progress area with card style */}
-      {(loading || uninstalling) && (
-        <div className="card mb-6 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary text-sm font-medium">
-            <span className="inline-block w-[14px] h-[14px] border-2 border-[#ccc] border-t-accent rounded-full animate-spin" />
-            <span>{progressLines.length > 0 ? t("scanningLines", { count: progressLines.length }) : t("common:scanning")}</span>
-          </div>
-          {progressLines.length > 0 && (
-            <pre className="m-0 p-3 max-h-[300px] overflow-y-auto font-mono text-xs leading-relaxed bg-bg-tertiary text-text-primary whitespace-pre-wrap break-all rounded-xl mt-2">
-              {progressLines.slice(-20).join("\n")}
-            </pre>
-          )}
-        </div>
-      )}
+      {isStreaming && <ProgressCard lines={progressLines} label={t("common:scanning")} />}
 
       <div className="flex items-center gap-4 mb-4">
         <input

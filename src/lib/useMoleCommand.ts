@@ -1,20 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "./invoke";
-
-// 检测是否在 Tauri 环境中
-function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
-// 动态导入 listen，避免在非 Tauri 环境中报错
-async function safeListen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void> {
-  if (!isTauri()) {
-    console.warn(`[Dev Mode] Cannot listen to "${event}" outside Tauri environment`);
-    return () => {};
-  }
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen<T>(event, handler);
-}
+import { safeListen } from "./safeListen";
 
 export interface CommandState<T> {
   status: "idle" | "loading" | "success" | "error";
@@ -32,6 +18,10 @@ export function useMoleCommand<T>(command: string, args?: Record<string, unknown
 
   const cancelledRef = useRef(false);
   const unlistenRef = useRef<(() => void) | null>(null);
+  // Track loading via ref so the concurrency guard always reads the latest
+  // value. Reading `state.status` inside `execute` would capture a stale
+  // value because `state` is not in the deps array.
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -40,8 +30,10 @@ export function useMoleCommand<T>(command: string, args?: Record<string, unknown
   }, []);
 
   const execute = useCallback(async () => {
-    // Prevent concurrent calls
-    if (state.status === "loading") return;
+    // Prevent concurrent calls — read from ref, not state, to avoid the
+    // stale-closure trap.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     cancelledRef.current = false;
     // 保留旧数据，避免界面闪烁
     setState((prev) => ({ status: "loading", data: prev.data, error: null }));
@@ -71,11 +63,13 @@ export function useMoleCommand<T>(command: string, args?: Record<string, unknown
     } finally {
       unlistenRef.current?.();
       unlistenRef.current = null;
+      loadingRef.current = false;
     }
   }, [command, args]);
 
   const cancel = useCallback(() => {
     cancelledRef.current = true;
+    loadingRef.current = false;
     unlistenRef.current?.();
     unlistenRef.current = null;
     setState({ status: "idle", data: null, error: null });

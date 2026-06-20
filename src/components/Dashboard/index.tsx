@@ -109,13 +109,15 @@ export default function Dashboard() {
     }
   }, [state.data]);
 
-  // 准备 CPU 核心数据（使用 CPU 总使用率平均分配，实际需要后端支持每个核心的数据）
+  // 准备 CPU 核心数据
+  // 后端目前只提供系统总使用率，每个核心都展示该平均值。
+  // 待后端支持每核数据后再替换为真实每核使用率。
   const cpuCoreData = useMemo(() => {
     if (!state.data) return [];
     const avgUsage = state.data.cpuUsage;
     return Array.from({ length: state.data.cpuCores }, (_, i) => ({
       core: `Core ${i + 1}`,
-      usage: avgUsage + (Math.random() * 10 - 5), // 在平均值附近小幅波动
+      usage: avgUsage,
     }));
   }, [state.data]);
 
@@ -262,7 +264,7 @@ export default function Dashboard() {
                   bars={[{ dataKey: 'usage', name: t('usageRate'), color: theme.colors.primary }]}
                   xAxisKey="core"
                   direction="horizontal"
-                  valueFormatter={(v) => `${v.toFixed(4)}%`}
+                  valueFormatter={(v) => `${v.toFixed(1)}%`}
                   height={200}
                 />
               </div>

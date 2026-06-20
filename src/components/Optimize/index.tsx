@@ -1,9 +1,9 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "../../lib/invoke";
-import { safeListen } from "../../lib/safeListen";
+import { useMoleStream } from "../../lib/useMoleStream";
 import { AppBarChart } from "../charts";
 import { useChartTheme } from "../../hooks/useChartTheme";
+import ProgressCard from "../common/ProgressCard";
 
 interface OptimizeAction {
   name: string;
@@ -96,84 +96,38 @@ export default function Optimize() {
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
-  const [progressLines, setProgressLines] = useState<string[]>([]);
-  const unlistenRefs = useRef<(() => void)[]>([]);
+  const { progressLines, isStreaming, start } = useMoleStream("optimize");
   const { t } = useTranslation(["optimize", "common"]);
   const theme = useChartTheme();
-
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-    };
-  }, []);
 
   const handleScan = useCallback(async () => {
     setScanning(true);
     setError(null);
     setResultMsg(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("optimize:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up scan completed listener
-    const unlistenCompleted = await safeListen<void>("optimize:scan_completed", () => {
-      setScanning(false);
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<{ rawOutput: string }>("optimize_scan").then((res) => {
-      setScanData(parseOptimizeOutput(res.rawOutput));
-    }).catch((err) => {
+    try {
+      const rawOutput = await start("optimize:scan_completed", "optimize_scan");
+      setScanData(parseOptimizeOutput(rawOutput));
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setScanning(false);
-    });
-  }, []);
+    }
+  }, [start]);
 
   const handleExecute = useCallback(async () => {
     setExecuting(true);
     setError(null);
     setResultMsg(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("optimize:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up execute completed listener
-    const unlistenCompleted = await safeListen<void>("optimize:execute_completed", () => {
-      setExecuting(false);
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<{ rawOutput: string }>("optimize_execute").then((res) => {
+    try {
+      const rawOutput = await start("optimize:execute_completed", "optimize_execute");
       setResultMsg("Optimizations applied successfully.");
-      setScanData(parseOptimizeOutput(res.rawOutput));
-    }).catch((err) => {
+      setScanData(parseOptimizeOutput(rawOutput));
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setExecuting(false);
-    });
-  }, []);
+    }
+  }, [start]);
 
   const totalActions = scanData
     ? scanData.sections.reduce((sum, s) => sum + s.actions.length, 0)
@@ -184,12 +138,6 @@ export default function Optimize() {
     name: section.name.length > 10 ? section.name.substring(0, 10) + '...' : section.name,
     count: section.actions.length,
   })) || [];
-
-  // 准备优化前后对比数据（需要后端支持实际性能指标）
-  const comparisonData = useMemo(() => {
-    // 暂无实际对比数据，返回空数组
-    return [];
-  }, []);
 
   return (
     <div className="page-container">
@@ -214,20 +162,7 @@ export default function Optimize() {
       {error && <p className="text-[var(--danger-color)]">{error}</p>}
       {resultMsg && <p className="text-[var(--success-color)]">{resultMsg}</p>}
 
-      {/* Progress area with card style */}
-      {(scanning || executing) && (
-        <div className="card mb-6 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary text-sm font-medium">
-            <span className="inline-block w-[14px] h-[14px] border-2 border-[#ccc] border-t-accent rounded-full animate-spin" />
-            <span>{progressLines.length > 0 ? t("scanningLines", { count: progressLines.length }) : t("common:scanning")}</span>
-          </div>
-          {progressLines.length > 0 && (
-            <pre className="m-0 p-3 max-h-[300px] overflow-y-auto font-mono text-xs leading-relaxed bg-bg-tertiary text-text-primary whitespace-pre-wrap break-all rounded-xl mt-2">
-              {progressLines.slice(-20).join("\n")}
-            </pre>
-          )}
-        </div>
-      )}
+      {isStreaming && <ProgressCard lines={progressLines} label={t("common:scanning")} />}
 
       {scanData?.isDryRun && (
         <div className="info-banner bg-[var(--info-bg)] rounded-xl mb-4 text-[0.9rem] text-[var(--accent-color)]">
@@ -252,44 +187,21 @@ export default function Optimize() {
 
       {scanData && (
         <div className="mb-6">
-          <div className="grid grid-cols-2 gap-6">
-            {/* 分类统计 */}
-            <div className="card">
-              <div className="card-header">{t("categoryStats")}</div>
-              <AppBarChart
-                data={categoryStats}
-                bars={[
-                  {
-                    dataKey: 'count',
-                    name: t('optimizationCount'),
-                    color: theme.colors.primary,
-                  },
-                ]}
-                xAxisKey="name"
-                height={250}
-              />
-            </div>
-
-            {/* 优化前后对比 */}
-            <div className="card">
-              <div className="card-header">{t("beforeAfterComparison")}</div>
-              {comparisonData.length > 0 ? (
-                <AppBarChart
-                  data={comparisonData}
-                  bars={[
-                    { dataKey: 'before', name: t('before'), color: theme.colors.muted },
-                    { dataKey: 'after', name: t('after'), color: theme.colors.success },
-                  ]}
-                  xAxisKey="metric"
-                  grouped
-                  height={250}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-[250px] text-[var(--text-secondary)]">
-                  {t("noComparisonData")}
-                </div>
-              )}
-            </div>
+          {/* 分类统计 */}
+          <div className="card">
+            <div className="card-header">{t("categoryStats")}</div>
+            <AppBarChart
+              data={categoryStats}
+              bars={[
+                {
+                  dataKey: 'count',
+                  name: t('optimizationCount'),
+                  color: theme.colors.primary,
+                },
+              ]}
+              xAxisKey="name"
+              height={250}
+            />
           </div>
         </div>
       )}

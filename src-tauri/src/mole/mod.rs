@@ -106,38 +106,52 @@ pub fn run_mole_with_timeout(
     Ok((code, stdout, stderr))
 }
 
-/// Run a Mole subcommand in dry-run mode with an explicit timeout.
+/// Run a Mole subcommand and stream progress via Tauri events.
 ///
-/// Like [`run_mole_with_timeout`], but sets `MOLE_DRY_RUN=1`.
-/// Returns `(exit_code, stdout, stderr)` on success.
-#[allow(dead_code)]
-pub fn run_mole_dry_run_with_timeout(
-    mole_path: &Path,
-    subcommand: &str,
-    args: &[&str],
-    envs: &[(&str, &str)],
+/// This consolidates the common pattern used by `clean`, `optimize`, `purge`,
+/// `analyze`, and `uninstall`: spawn a child process, read stdout line by
+/// line in a background thread (emitting each line as a Tauri progress
+/// event), capture stderr, poll with timeout, and return the collected stdout.
+///
+/// Returns the collected stdout as a `String` on success.
+pub fn run_mole_streaming(
+    cmd: &mut Command,
+    app_handle: &tauri::AppHandle,
+    progress_event: &str,
     timeout: Duration,
-) -> Result<(i32, String, String), String> {
-    let mut cmd = mole_dry_run_command(mole_path, subcommand);
-    cmd.args(args);
-    for &(k, v) in envs {
-        cmd.env(k, v);
-    }
-
+) -> Result<String, String> {
     let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {}", e))?;
     let start = Instant::now();
 
-    // Read stdout/stderr in separate threads.
-    let stdout_thread = take_and_read(child.stdout.take());
+    // Take stdout and read line by line in a separate thread, emitting
+    // each line as a Tauri progress event.
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let app_handle_clone = app_handle.clone();
+    let event_name = progress_event.to_string();
+    let stdout_thread = thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        let mut all_lines = Vec::new();
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    let _ = app_handle_clone.emit(&event_name, &line);
+                    all_lines.push(line);
+                }
+                Err(_) => break,
+            }
+        }
+        all_lines.join("\n")
+    });
+
+    // Take stderr
     let stderr_thread = take_and_read(child.stderr.take());
 
-    // Poll try_wait() until exit or timeout.
-    // When timed_out is true, `graceful_kill` has already reaped the child.
+    // Poll for exit with timeout
     let timed_out = poll_child(&mut child, timeout, start);
 
     // Collect output (with thread-level timeout to avoid hangs).
-    let stdout = join_with_timeout(stdout_thread, THREAD_JOIN_TIMEOUT).unwrap_or_default();
-    let stderr = join_with_timeout(stderr_thread, THREAD_JOIN_TIMEOUT).unwrap_or_default();
+    let stdout_output = join_with_timeout(stdout_thread, THREAD_JOIN_TIMEOUT).unwrap_or_default();
+    let stderr_output = join_with_timeout(stderr_thread, THREAD_JOIN_TIMEOUT).unwrap_or_default();
 
     if timed_out {
         return Err(format!(
@@ -150,7 +164,11 @@ pub fn run_mole_dry_run_with_timeout(
     let status = child.wait().map_err(|e| format!("wait failed: {}", e))?;
     let code = status.code().unwrap_or(-1);
 
-    Ok((code, stdout, stderr))
+    if code != 0 {
+        return Err(format!("command exited with {}\n{}", code, stderr_output));
+    }
+
+    Ok(stdout_output)
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +241,7 @@ fn default_timeout(subcommand: &str) -> Duration {
 
 /// Spawn a thread that reads an optional pipe to completion, returning the
 /// bytes as a `String`.
-pub fn take_and_read(mut pipe: Option<impl Read + Send + 'static>) -> thread::JoinHandle<String> {
+fn take_and_read(mut pipe: Option<impl Read + Send + 'static>) -> thread::JoinHandle<String> {
     thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(ref mut r) = pipe {
@@ -237,10 +255,6 @@ pub fn take_and_read(mut pipe: Option<impl Read + Send + 'static>) -> thread::Jo
 ///
 /// On timeout: sends SIGTERM, waits `KILL_GRACE`, then sends SIGKILL,
 /// and reaps the child (calls `wait()`). Returns `true` if timed out.
-pub fn poll_child_with_timeout(child: &mut Child, timeout: Duration, start: Instant) -> bool {
-    poll_child(child, timeout, start)
-}
-
 fn poll_child(child: &mut Child, timeout: Duration, start: Instant) -> bool {
     loop {
         match child.try_wait() {

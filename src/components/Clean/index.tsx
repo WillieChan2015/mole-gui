@@ -1,23 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/invoke";
-import { AppPieChart, ProgressRing } from "../charts";
-import { useChartTheme } from "../../hooks/useChartTheme";
-
-// 检测是否在 Tauri 环境中
-function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
-// 动态导入 listen，避免在非 Tauri 环境中报错
-async function safeListen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void> {
-  if (!isTauri()) {
-    console.warn(`[Dev Mode] Cannot listen to "${event}" outside Tauri environment`);
-    return () => {};
-  }
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen<T>(event, handler);
-}
+import { useMoleStream } from "../../lib/useMoleStream";
+import { AppPieChart } from "../charts";
+import ProgressCard from "../common/ProgressCard";
 
 interface CleanItem {
   name: string;
@@ -159,47 +145,16 @@ export default function Clean() {
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
-  const [progressLines, setProgressLines] = useState<string[]>([]);
-  const unlistenRefs = useRef<(() => void)[]>([]);
-  const theme = useChartTheme();
-
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-    };
-  }, []);
+  const { progressLines, isStreaming, start } = useMoleStream("clean");
 
   const handleScan = useCallback(async () => {
     setScanning(true);
     setError(null);
     setResultMsg(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("clean:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up scan completed listener
-    const unlistenCompleted = await safeListen<void>("clean:scan_completed", () => {
-      setScanning(false);
-      // Clean up listeners
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
     try {
       // 先执行 clean_list_scan（快速，无阻塞）
       const listRes = await invoke<CleanListData>("clean_list_scan");
       setListData(listRes);
-      // Default: all paths selected
       const allPaths = new Set<string>();
       for (const section of listRes.sections) {
         for (const item of section.items) {
@@ -208,18 +163,15 @@ export default function Clean() {
       }
       setSelectedPaths(allPaths);
 
-      // 异步执行 clean_scan（不等待完成）
-      invoke<{ rawOutput: string }>("clean_scan").then((res) => {
-        setScanData(parseCleanOutput(res.rawOutput));
-      }).catch((err) => {
-        setError(err instanceof Error ? err.message : String(err));
-        setScanning(false);
-      });
+      // 流式执行 clean_scan
+      const rawOutput = await start("clean:scan_completed", "clean_scan");
+      setScanData(parseCleanOutput(rawOutput));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setScanning(false);
     }
-  }, []);
+  }, [start]);
 
   const togglePath = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -313,9 +265,6 @@ export default function Clean() {
     };
   }) || [];
 
-  // 计算清理进度百分比
-  const cleanProgress = executing ? 50 : 0; // 简化实现，实际需要根据进度事件计算
-
   return (
     <div className="page-container">
       {/* Page header */}
@@ -353,20 +302,7 @@ export default function Clean() {
       {error && <p className="text-danger">{error}</p>}
       {resultMsg && <p className="text-success">{resultMsg}</p>}
 
-      {/* Progress area with card style */}
-      {scanning && (
-        <div className="card mb-6 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary text-sm font-medium">
-            <span className="inline-block w-[14px] h-[14px] border-2 border-[#ccc] border-t-accent rounded-full animate-spin" />
-            <span>{progressLines.length > 0 ? t("scanningLines", { count: progressLines.length }) : t("common:scanning")}</span>
-          </div>
-          {progressLines.length > 0 && (
-            <pre className="m-0 p-3 max-h-[300px] overflow-y-auto font-mono text-xs leading-relaxed bg-bg-tertiary text-text-primary whitespace-pre-wrap break-all rounded-xl mt-2">
-              {progressLines.slice(-20).join("\n")}
-            </pre>
-          )}
-        </div>
-      )}
+      {isStreaming && <ProgressCard lines={progressLines} label={t("common:scanning")} />}
 
       {/* Summary banner with icon */}
       {scanData?.summary && (
@@ -394,26 +330,20 @@ export default function Clean() {
               />
             </div>
 
-            {/* 清理进度动画 */}
+            {/* 清理状态 */}
             <div className="card">
               <h3 className="card-header">{t("cleanProgress")}</h3>
-              <div className="flex justify-center items-center py-4">
-                <ProgressRing
-                  percent={cleanProgress}
-                  size={150}
-                  strokeWidth={12}
-                  color={executing ? theme.colors.primary : theme.colors.success}
-                  centerContent={
-                    <div className="text-center">
-                      <div className="text-2xl font-semibold">
-                        {Math.round(cleanProgress)}%
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {executing ? t('common:cleaning') : t('ready')}
-                      </div>
-                    </div>
-                  }
-                />
+              <div className="flex flex-col justify-center items-center py-4 gap-3">
+                {executing ? (
+                  <span className="inline-block w-10 h-10 border-[3px] border-[#ccc] border-t-accent rounded-full animate-spin" />
+                ) : (
+                  <span className="inline-block w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary">
+                    ✓
+                  </span>
+                )}
+                <div className="text-sm text-text-secondary">
+                  {executing ? t("common:cleaning") : t("ready")}
+                </div>
               </div>
             </div>
           </div>

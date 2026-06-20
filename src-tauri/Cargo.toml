@@ -1,6 +1,6 @@
 [package]
 name = "mole-gui"
-version = "0.3.0"
+version = "0.0.1-alpha.1"
 description = "Native macOS GUI for Mole system maintenance tool"
 authors = ["Willie"]
 edition = "2021"

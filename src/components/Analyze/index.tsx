@@ -1,10 +1,10 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "../../lib/invoke";
-import { safeListen } from "../../lib/safeListen";
+import { useMoleStream } from "../../lib/useMoleStream";
 import { AppBarChart, AppPieChart, AppTreemap, AppSunburst } from "../charts";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { formatBytes } from "../../lib/chartUtils";
+import ProgressCard from "../common/ProgressCard";
 
 interface AnalyzeEntry {
   name: string;
@@ -37,52 +37,25 @@ export default function Analyze() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
   const [chartType, setChartType] = useState<'treemap' | 'sunburst' | 'bar'>('treemap');
-  const [progressLines, setProgressLines] = useState<string[]>([]);
   const [filterQuery, setFilterQuery] = useState("");
-  const unlistenRefs = useRef<(() => void)[]>([]);
+  const { progressLines, isStreaming, start } = useMoleStream("analyze");
   const theme = useChartTheme();
-
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-    };
-  }, []);
 
   const handleAnalyze = useCallback(async () => {
     if (!path.trim()) return;
     setLoading(true);
     setError(null);
     setResult(null);
-    setProgressLines([]);
-
-    // Clean up previous listeners
-    unlistenRefs.current.forEach((unlisten) => unlisten());
-    unlistenRefs.current = [];
-
-    // Set up progress listener
-    const unlistenProgress = await safeListen<string>("analyze:progress", (event) => {
-      setProgressLines((prev) => [...prev, event.payload]);
-    });
-    unlistenRefs.current.push(unlistenProgress);
-
-    // Set up completed listener
-    const unlistenCompleted = await safeListen<void>("analyze:completed", () => {
-      setLoading(false);
-      unlistenRefs.current.forEach((unlisten) => unlisten());
-      unlistenRefs.current = [];
-    });
-    unlistenRefs.current.push(unlistenCompleted);
-
-    // 异步执行命令（不等待完成）
-    invoke<string>("analyze_path", { path: path.trim() }).then((raw) => {
+    try {
+      const raw = await start("analyze:completed", "analyze_path", { path: path.trim() });
       const data: AnalyzeResult = JSON.parse(raw);
       setResult(data);
-    }).catch((err) => {
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-    });
-  }, [path]);
+    }
+  }, [path, start]);
 
   const sortedEntries = useMemo(() => {
     if (!result) return [];
@@ -200,20 +173,7 @@ export default function Analyze() {
 
       {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
 
-      {/* Progress area with card style */}
-      {loading && (
-        <div className="card mb-6 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary text-sm font-medium">
-            <span className="inline-block w-[14px] h-[14px] border-2 border-[#ccc] border-t-accent rounded-full animate-spin" />
-            <span>{progressLines.length > 0 ? t("scanningLines", { count: progressLines.length }) : t("common:analyzing")}</span>
-          </div>
-          {progressLines.length > 0 && (
-            <pre className="m-0 p-3 max-h-[300px] overflow-y-auto font-mono text-xs leading-relaxed bg-bg-tertiary text-text-primary whitespace-pre-wrap break-all rounded-xl mt-2">
-              {progressLines.slice(-20).join("\n")}
-            </pre>
-          )}
-        </div>
-      )}
+      {isStreaming && <ProgressCard lines={progressLines} label={t("common:analyzing")} />}
 
       {result && (
         <>

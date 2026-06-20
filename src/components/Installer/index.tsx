@@ -1,20 +1,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/invoke";
+import { formatBytes } from "../../lib/chartUtils";
 
 interface InstallerFile {
   name: string;
   path: string;
   size: number;
   extension: string;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 export default function Installer() {
@@ -48,7 +41,7 @@ export default function Installer() {
       t("deleteConfirm", {
         name: selected.name,
         path: selected.path,
-        size: formatSize(selected.size),
+        size: formatBytes(selected.size),
       })
     );
     if (!confirmed) return;
@@ -131,7 +124,7 @@ export default function Installer() {
                   <td className="border-b border-border py-2 px-3 font-['SF Mono',Menlo,Monaco,monospace] text-[0.85rem]">
                     {file.path.includes("/Downloads/") ? "~/Downloads" : "~/Documents"}
                   </td>
-                  <td className="border-b border-border py-2 px-3 text-right whitespace-nowrap">{formatSize(file.size)}</td>
+                  <td className="border-b border-border py-2 px-3 text-right whitespace-nowrap">{formatBytes(file.size)}</td>
                 </tr>
               ))}
             </tbody>
